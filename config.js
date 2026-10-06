@@ -9,5 +9,5 @@ export const MINDAR_COMPILER_URL = "https://hiukim.github.io/mind-ar-js-doc/tool
 
 // 수업용 제한값. 필요하면 변경하세요.
 export const MAX_IMAGE_MB = 8;
-export const MAX_VIDEO_MB = 20;
+export const MAX_VIDEO_MB = 45;
 export const MAX_MIND_MB = 8;
