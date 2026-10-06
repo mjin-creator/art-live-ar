@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>ART LIVE AR Viewer</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;
+      font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif}
+    #app{position:fixed;inset:0}
+    #sceneHost{position:absolute;inset:0}
+    #sceneHost a-scene{width:100%!important;height:100%!important}
+    #overlay{position:absolute;z-index:20;left:0;right:0;top:0;padding:14px;display:flex;gap:8px;
+      align-items:center;justify-content:space-between;background:linear-gradient(rgba(0,0,0,.65),rgba(0,0,0,0));color:white}
+    #overlay .meta{min-width:0}.title{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65vw}
+    .sub{font-size:12px;opacity:.85;margin-top:2px}
+    button,a{border:0;border-radius:11px;min-height:42px;padding:10px 12px;font-weight:800;text-decoration:none}
+    #startPanel{position:absolute;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:min(88vw,430px);background:white;border-radius:18px;padding:20px;text-align:center;color:#222}
+    #startPanel h1{font-size:22px;margin:0 0 8px}#startPanel p{color:#666;line-height:1.5;font-size:14px}
+    #startBtn{background:#315a52;color:white;width:100%;font-size:17px}
+    #soundBtn{background:rgba(255,255,255,.9);color:#222;white-space:nowrap}
+    #scanHint{position:absolute;z-index:18;left:50%;bottom:30px;transform:translateX(-50%);
+      background:rgba(0,0,0,.65);color:white;border-radius:999px;padding:9px 14px;font-size:13px;white-space:nowrap}
+    #error{position:absolute;z-index:40;left:14px;right:14px;top:80px;background:#fff0f0;color:#8b1f1f;
+      border-radius:12px;padding:14px;display:none}
+    #back{position:absolute;z-index:22;right:14px;bottom:18px;background:rgba(255,255,255,.92);color:#222}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="sceneHost"></div>
+  <div id="overlay">
+    <div class="meta">
+      <div class="title" id="title">AR 작품 불러오는 중…</div>
+      <div class="sub" id="studentInfo"></div>
+    </div>
+    <button id="soundBtn" type="button">소리 켜기</button>
+  </div>
+  <div id="startPanel">
+    <h1>작품을 비춰보세요</h1>
+    <p>카메라 허용 후, 등록한 작품 전체가 화면 안에 들어오도록 비추면 영상이 그림 위에서 재생됩니다.</p>
+    <button id="startBtn" type="button">AR 시작하기</button>
+  </div>
+  <div id="scanHint">작품 전체를 천천히 비춰주세요</div>
+  <div id="error"></div>
+  <a id="back" href="./index.html">처음으로</a>
+</div>
+
+<script type="module">
+import { supabase, isConfigured } from "./supabase-client.js";
+
+const id = new URL(location.href).searchParams.get("id");
+const errBox = document.querySelector("#error");
+const startPanel = document.querySelector("#startPanel");
+const startBtn = document.querySelector("#startBtn");
+const soundBtn = document.querySelector("#soundBtn");
+
+function fail(msg){
+  errBox.textContent=msg; errBox.style.display="block";
+  startBtn.disabled=true;
+}
+if(!isConfigured) fail("Supabase 설정이 없습니다. config.js를 먼저 설정해 주세요.");
+if(!id) fail("작품 ID가 없습니다.");
+
+let videoEl=null, sceneEl=null, started=false;
+
+if(window.AFRAME && !AFRAME.components["artlive-video"]){
+  AFRAME.registerComponent("artlive-video", {
+    init(){
+      this.el.addEventListener("targetFound", ()=>{
+        document.querySelector("#scanHint").textContent="인식 완료 · 영상 재생 중";
+        videoEl?.play().catch(()=>{});
+      });
+      this.el.addEventListener("targetLost", ()=>{
+        document.querySelector("#scanHint").textContent="작품 전체를 다시 비춰주세요";
+        videoEl?.pause();
+      });
+    }
+  });
+}
+
+async function loadProject(){
+  if(!isConfigured || !id) return;
+  try{
+    const {data,error}=await supabase.from("projects")
+      .select("id,school_code,grade,class_no,student_no,title,image_url,video_url,mind_url,image_width,image_height")
+      .eq("id",id).single();
+    if(error) throw error;
+
+    document.querySelector("#title").textContent=data.title || "AR 작품";
+    document.querySelector("#studentInfo").textContent=
+      `${data.school_code} · ${data.grade}학년 ${data.class_no}반 ${data.student_no}번`;
+
+    const ratio = (data.image_width && data.image_height) ? (data.image_height/data.image_width) : 0.75;
+
+    const host=document.querySelector("#sceneHost");
+    host.innerHTML = `
+      <a-scene
+        mindar-image="imageTargetSrc: ${data.mind_url}; autoStart: false; uiLoading: no; uiError: no; uiScanning: no"
+        embedded
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+        <a-assets>
+          <video id="arVideo" src="${data.video_url}" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+        </a-assets>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity mindar-image-target="targetIndex: 0" artlive-video>
+          <a-video src="#arVideo" position="0 0 0.01" width="1" height="${ratio}" rotation="0 0 0"></a-video>
+        </a-entity>
+      </a-scene>`;
+
+    sceneEl=host.querySelector("a-scene");
+    videoEl=host.querySelector("#arVideo");
+    if(!sceneEl.hasLoaded){
+      await new Promise(resolve=>sceneEl.addEventListener("loaded",resolve,{once:true}));
+    }
+    startBtn.disabled=false;
+  }catch(e){
+    console.error(e); fail(e?.message || "작품 정보를 불러오지 못했습니다.");
+  }
+}
+await loadProject();
+
+startBtn.addEventListener("click", async ()=>{
+  if(started || !sceneEl) return;
+  try{
+    started=true;
+    const sys=sceneEl.systems["mindar-image-system"];
+    await sys.start();
+    startPanel.style.display="none";
+    videoEl?.play().then(()=>videoEl.pause()).catch(()=>{});
+  }catch(e){
+    started=false;
+    fail("카메라를 시작하지 못했습니다. Android에서는 Chrome을 사용하고 카메라 권한을 허용해 주세요.");
+  }
+});
+
+soundBtn.addEventListener("click", ()=>{
+  if(!videoEl) return;
+  videoEl.muted=!videoEl.muted;
+  soundBtn.textContent=videoEl.muted ? "소리 켜기" : "소리 끄기";
+  if(!videoEl.muted) videoEl.play().catch(()=>{});
+});
+</script>
+</body>
+</html>

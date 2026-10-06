@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>ART LIVE · 살아나는 미술관</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="pill">WebAR · Galaxy Tab 지원</div>
+      <h1>ART LIVE<br>살아나는 미술관</h1>
+      <p>완성한 작품 이미지와 영상을 연결해, 브라우저에서 작품을 비추면 영상이 살아나는 AR 작품을 만듭니다.</p>
+    </section>
+
+    <div id="setupWarning" class="notice warn" hidden>
+      <strong>교사 설정이 아직 필요합니다.</strong><br>
+      <code>config.js</code>에 Supabase URL과 anon key를 넣은 뒤 배포하면 학생들이 사용할 수 있습니다.
+    </div>
+
+    <nav class="tabs" aria-label="기능 선택">
+      <button type="button" class="tab active" data-tab="create">내 AR 만들기</button>
+      <button type="button" class="tab" data-tab="view">작품 감상하기</button>
+    </nav>
+
+    <section id="panel-create" class="panel">
+      <div class="card">
+        <h2>1. 작품 정보</h2>
+        <div class="grid">
+          <div>
+            <label for="schoolCode">학교코드</label>
+            <input id="schoolCode" autocomplete="off" placeholder="예: GARAK26" maxlength="20">
+          </div>
+          <div>
+            <label for="title">작품 제목 <span class="small">(선택)</span></label>
+            <input id="title" maxlength="80" placeholder="예: 중세의 새로운 놀이">
+          </div>
+          <div>
+            <label for="grade">학년</label>
+            <input id="grade" type="number" min="1" max="6" value="1" inputmode="numeric">
+          </div>
+          <div>
+            <label for="classNo">반</label>
+            <input id="classNo" type="number" min="1" max="30" value="1" inputmode="numeric">
+          </div>
+          <div>
+            <label for="studentNo">번호</label>
+            <input id="studentNo" type="number" min="1" max="60" value="1" inputmode="numeric">
+          </div>
+        </div>
+      </div>
+
+      <form id="createForm">
+        <div class="card">
+          <h2>2. 파일 3개 준비</h2>
+          <div class="steps">
+            <div class="step">
+              <div>
+                <strong>완성 작품 JPG/PNG</strong>
+                브뤼겔 그림에 자신의 모습이 합성된 최종 이미지를 선택합니다.
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <strong>움직이는 영상 MP4</strong>
+                Canva AI와 촬영 영상을 편집한 최종 영상을 선택합니다.
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <strong>targets.mind 만들기</strong>
+                아래 버튼으로 MindAR 공식 컴파일러를 열고, <b>같은 작품 이미지</b>를 올려 만든 <code>targets.mind</code>를 다시 선택합니다.
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <a id="compilerLink" class="btn secondary" target="_blank" rel="noopener">MindAR 인식파일 만들기</a>
+          </div>
+
+          <hr>
+
+          <div class="filebox">
+            <label for="imageFile">① 작품 이미지</label>
+            <input id="imageFile" type="file" accept="image/jpeg,image/png" required>
+            <div id="imageFileMeta" class="filemeta"></div>
+          </div>
+          <div style="height:10px"></div>
+          <div class="filebox">
+            <label for="videoFile">② 영상</label>
+            <input id="videoFile" type="file" accept="video/mp4,video/webm" required>
+            <div id="videoFileMeta" class="filemeta"></div>
+          </div>
+          <div style="height:10px"></div>
+          <div class="filebox">
+            <label for="mindFile">③ AR 인식파일</label>
+            <input id="mindFile" type="file" accept=".mind,application/octet-stream" required>
+            <div id="mindFileMeta" class="filemeta"></div>
+          </div>
+
+          <div class="notice warn">
+            영상은 가능하면 <strong>720p · 20MB 이하</strong>로 준비하세요. 200명 규모에서는 영상 용량을 작게 만드는 것이 중요합니다.
+          </div>
+
+          <div class="progress" aria-label="업로드 진행"><span id="bar"></span></div>
+          <div class="actions">
+            <button id="submitBtn" class="primary" type="submit">내 AR 작품 등록하기</button>
+          </div>
+          <div id="status" class="notice" hidden></div>
+
+          <div id="result" class="result" hidden>
+            <strong id="resultId"></strong><br>
+            <a id="resultLink" href="#">내 AR 작품 열기</a>
+            <div class="help">다른 기기에서도 같은 학교코드·학년·반·번호로 ‘작품 감상하기’에서 찾을 수 있습니다.</div>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section id="panel-view" class="panel" hidden>
+      <form id="findForm" class="card">
+        <h2>작품 감상하기</h2>
+        <p class="help">QR 없이 학교코드와 번호로 작품을 찾습니다. 가장 최근에 등록한 작품이 열립니다.</p>
+        <div class="grid">
+          <div>
+            <label for="findSchoolCode">학교코드</label>
+            <input id="findSchoolCode" placeholder="예: GARAK26" maxlength="20">
+          </div>
+          <div>
+            <label for="findGrade">학년</label>
+            <input id="findGrade" type="number" min="1" max="6" value="1">
+          </div>
+          <div>
+            <label for="findClassNo">반</label>
+            <input id="findClassNo" type="number" min="1" max="30" value="1">
+          </div>
+          <div>
+            <label for="findStudentNo">번호</label>
+            <input id="findStudentNo" type="number" min="1" max="60" value="1">
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit">AR 작품 열기</button>
+        </div>
+        <div id="findStatus" class="notice" hidden></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h3>학생용 사용 순서</h3>
+      <p class="help">작품 이미지 선택 → 영상 선택 → MindAR 컴파일러에서 <code>targets.mind</code> 생성 → 세 파일 등록 → AR 열기 → 카메라 허용 → 실제 작품 전체를 비추기</p>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
