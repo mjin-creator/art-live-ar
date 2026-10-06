@@ -76,31 +76,34 @@ async function ensureMindARCompiler(){
   let CompilerClass = findCompiler();
   if(CompilerClass) return CompilerClass;
 
-  // CDN 로딩이 늦었거나 실패한 경우 공식 MindAR 배포본을 한 번 더 불러옵니다.
+  // MindAR 1.1.4 classic build exposes the compiler directly in the browser.
   await new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-artlive-mindar-fallback]');
+    const existing = document.querySelector('script[data-artlive-mindar-classic]');
     if(existing){
+      if(findCompiler()) { resolve(); return; }
       existing.addEventListener("load", resolve, {once:true});
       existing.addEventListener("error", reject, {once:true});
       return;
     }
 
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image.prod.js";
+    script.src = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image.prod.js";
     script.async = true;
-    script.dataset.artliveMindarFallback = "1";
+    script.dataset.artliveMindarClassic = "1";
     script.onload = resolve;
-    script.onerror = () => reject(new Error("MindAR 라이브러리를 불러오지 못했습니다."));
+    script.onerror = () => reject(new Error("AR 분석 라이브러리를 불러오지 못했습니다."));
     document.head.appendChild(script);
   });
 
+  // Give the classic bundle a moment to expose its global.
+  await new Promise(resolve => setTimeout(resolve, 50));
+
   CompilerClass = findCompiler();
   if(!CompilerClass){
-    throw new Error("AR 자동 분석 모듈을 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.");
+    throw new Error("AR 분석 기능을 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.");
   }
   return CompilerClass;
 }
-
 async function compileMindFromImage(file){
   const CompilerClass = await ensureMindARCompiler();
 
