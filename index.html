@@ -27,28 +27,12 @@
 
     <section id="panel-create" class="panel">
       <div class="card">
-        <h2>1. 작품 정보</h2>
-
-        <!-- 현재 수업 학교코드는 학생에게 보이지 않고 자동 적용됩니다. -->
+        <h2>1. 학번</h2>
         <input id="schoolCode" type="hidden" value="GARAK26">
-
-        <div class="grid">
-          <div>
-            <label for="grade">학년</label>
-            <input id="grade" type="number" min="1" max="6" value="1" inputmode="numeric">
-          </div>
-          <div>
-            <label for="classNo">반</label>
-            <input id="classNo" type="number" min="1" max="30" value="1" inputmode="numeric">
-          </div>
-          <div>
-            <label for="studentNo">번호</label>
-            <input id="studentNo" type="number" min="1" max="60" value="1" inputmode="numeric">
-          </div>
-          <div>
-            <label for="title">작품 제목 <span class="small">(선택)</span></label>
-            <input id="title" maxlength="80" placeholder="예: 중세의 새로운 놀이">
-          </div>
+        <div>
+          <label for="studentId">학번</label>
+          <input id="studentId" type="text" inputmode="numeric" autocomplete="off"
+                 maxlength="20" placeholder="예: 10101">
         </div>
       </div>
 
@@ -57,10 +41,10 @@
           <h2>2. 작품 파일 등록</h2>
 
           <div class="filebox">
-            <label for="imageFile">① 완성 작품 이미지</label>
+            <label for="imageFile">① AR 기준 이미지</label>
             <p class="help">
-              브뤼겔 그림에 자신의 모습이 합성된 <strong>전체 최종 작품</strong>을 선택하세요.
-              JPG 또는 PNG 파일을 사용할 수 있습니다.
+              AR에서 인식할 <strong>최종 이미지</strong>를 선택하세요.
+              JPG 또는 PNG 형식을 사용할 수 있습니다.
             </p>
             <input id="imageFile" type="file" accept="image/jpeg,image/png" required>
             <div id="imageFileMeta" class="filemeta"></div>
@@ -69,18 +53,13 @@
           <div style="height:12px"></div>
 
           <div class="filebox">
-            <label for="videoFile">② 움직이는 영상</label>
+            <label for="videoFile">② 편집 영상</label>
             <p class="help">
-              Canva AI 또는 촬영 영상을 편집한 <strong>최종 영상</strong>을 선택하세요.
-              MP4 사용을 권장합니다.
+              이미지 위에 재생할 <strong>최종 편집 영상</strong>을 선택하세요.
+              MP4 형식을 사용하세요.
             </p>
             <input id="videoFile" type="file" accept="video/mp4,video/webm" required>
             <div id="videoFileMeta" class="filemeta"></div>
-          </div>
-
-          <div class="notice ok">
-            <strong>AR 인식파일은 따로 만들 필요가 없습니다.</strong><br>
-            작품 이미지를 등록하면 웹앱이 같은 이미지에서 AR 인식정보를 자동으로 생성합니다.
           </div>
 
           <div class="notice warn">
@@ -97,7 +76,7 @@
           <div id="result" class="result" hidden>
             <strong id="resultId"></strong><br>
             <a id="resultLink" href="#">내 AR 작품 열기</a>
-            <div class="help">다른 기기에서도 같은 학년·반·번호로 ‘작품 감상하기’에서 찾을 수 있습니다.</div>
+            <div class="help">다른 기기에서도 같은 학번으로 ‘작품 감상하기’에서 찾을 수 있습니다.</div>
           </div>
         </div>
       </form>
@@ -106,35 +85,18 @@
     <section id="panel-view" class="panel" hidden>
       <form id="findForm" class="card">
         <h2>작품 감상하기</h2>
-
-        <!-- 현재 수업 학교코드는 학생에게 보이지 않고 자동 적용됩니다. -->
         <input id="findSchoolCode" type="hidden" value="GARAK26">
-
-        <p class="help">QR 없이 학년·반·번호로 작품을 찾습니다. 가장 최근에 등록한 작품이 열립니다.</p>
-        <div class="grid">
-          <div>
-            <label for="findGrade">학년</label>
-            <input id="findGrade" type="number" min="1" max="6" value="1">
-          </div>
-          <div>
-            <label for="findClassNo">반</label>
-            <input id="findClassNo" type="number" min="1" max="30" value="1">
-          </div>
-          <div>
-            <label for="findStudentNo">번호</label>
-            <input id="findStudentNo" type="number" min="1" max="60" value="1">
-          </div>
+        <p class="help">학번을 입력하면 가장 최근에 만든 AR 작품이 열립니다.</p>
+        <div>
+          <label for="findStudentId">학번</label>
+          <input id="findStudentId" type="text" inputmode="numeric" autocomplete="off"
+                 maxlength="20" placeholder="예: 10101">
         </div>
         <div class="actions">
           <button class="primary" type="submit">AR 작품 열기</button>
         </div>
         <div id="findStatus" class="notice" hidden></div>
       </form>
-    </section>
-
-    <section class="card">
-      <h3>학생용 사용 순서</h3>
-      <p class="help">학년·반·번호 입력 → 작품 이미지 선택 → 영상 선택 → 내 작품 AR로 만들기 → AR 열기 → 카메라 허용 → 실제 작품 전체를 비추기</p>
     </section>
   </main>
   <script type="module" src="./app.js"></script>
