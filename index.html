@@ -67,9 +67,15 @@
             여러 학생이 동시에 사용할 때는 720p로 내보내고 영상 길이를 짧게 만드는 것을 권장합니다.
           </div>
 
-          <div class="progress" aria-label="등록 진행"><span id="bar"></span></div>
+          <div class="progress-wrap">
+            <div id="progressText" class="progress-label">AR 제작 준비됨</div>
+            <div class="progress" aria-label="AR 제작 진행">
+              <span id="bar"></span>
+              <strong id="progressPercent">0%</strong>
+            </div>
+          </div>
           <div class="actions">
-            <button id="submitBtn" class="primary" type="submit">내 작품 AR로 만들기</button>
+            <button id="submitBtn" class="primary" type="submit">AR로 만들기</button>
           </div>
           <div id="status" class="notice" hidden></div>
 

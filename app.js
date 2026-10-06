@@ -12,8 +12,7 @@ function showPanel(name){
 }
 tabs.forEach(b => b.addEventListener("click", () => showPanel(b.dataset.tab)));
 
-const setupWarning = $("#setupWarning");
-if(!isConfigured) setupWarning.hidden = false;
+if(!isConfigured) $("#setupWarning").hidden = false;
 
 const mb = n => (n / 1024 / 1024).toFixed(1);
 
@@ -21,6 +20,10 @@ function fileOk(file, maxMb, type){
   if(!file) return `${type} 파일을 선택하세요.`;
   if(file.size > maxMb * 1024 * 1024) return `${type} 파일이 너무 큽니다. ${maxMb}MB 이하로 준비해 주세요.`;
   return "";
+}
+
+function cleanStudentId(v){
+  return String(v ?? "").trim().replace(/\s+/g, "").replace(/[^0-9A-Za-z가-힣_-]/g, "");
 }
 function sanitize(v){
   return String(v ?? "").trim().replace(/[^\p{L}\p{N}_-]/gu, "");
@@ -31,8 +34,17 @@ function setStatus(msg, type=""){
   el.className = `notice ${type}`.trim();
   el.hidden = false;
 }
-function setProgress(p){
-  $("#bar").style.width = `${Math.max(0, Math.min(100,p))}%`;
+function setProgress(p, label=""){
+  const value = Math.max(0, Math.min(100, p));
+  $("#bar").style.width = `${value}%`;
+  const progressText = $("#progressText");
+  const progressPercent = $("#progressPercent");
+  if(progressText){
+    progressText.textContent = label ? `AR 제작 중 · ${label}` : "AR 제작 중";
+  }
+  if(progressPercent){
+    progressPercent.textContent = `${Math.round(value)}%`;
+  }
 }
 
 async function loadImage(file){
@@ -65,7 +77,7 @@ async function compileMindFromImage(file){
     const compiler = new window.MINDAR.IMAGE.Compiler();
     await compiler.compileImageTargets([img], (progress) => {
       const mapped = 10 + (Number(progress) / 100) * 25;
-      setProgress(mapped);
+      setProgress(mapped, "AR 인식 분석 중");
       setStatus(`작품을 AR용으로 자동 분석하고 있습니다… ${Math.round(progress)}%`);
     });
     const exportedBuffer = await compiler.exportData();
@@ -88,8 +100,7 @@ async function validateSchool(code){
 ["imageFile","videoFile"].forEach(id=>{
   $("#" + id).addEventListener("change", e=>{
     const f=e.target.files?.[0];
-    const meta=$("#"+id+"Meta");
-    meta.textContent=f ? `${f.name} · ${mb(f.size)}MB` : "";
+    $("#"+id+"Meta").textContent=f ? `${f.name} · ${mb(f.size)}MB` : "";
   });
 });
 
@@ -97,23 +108,18 @@ $("#createForm").addEventListener("submit", async (e)=>{
   e.preventDefault();
 
   if(!isConfigured){
-    setStatus("먼저 config.js에 Supabase URL과 publishable key를 넣어 주세요.", "error");
+    setStatus("Supabase 설정을 확인해 주세요.", "error");
     return;
   }
 
   const schoolCode = sanitize($("#schoolCode").value).toUpperCase();
-  const grade = Number($("#grade").value);
-  const classNo = Number($("#classNo").value);
-  const studentNo = Number($("#studentNo").value);
-  const title = $("#title").value.trim().slice(0,80);
+  const studentId = cleanStudentId($("#studentId").value);
   const imageFile = $("#imageFile").files?.[0];
   const videoFile = $("#videoFile").files?.[0];
 
   const errors = [
-    !schoolCode ? "학교 설정 오류가 있습니다." : "",
-    !(grade>=1 && grade<=6) ? "학년을 확인하세요." : "",
-    !(classNo>=1 && classNo<=30) ? "반을 확인하세요." : "",
-    !(studentNo>=1 && studentNo<=60) ? "번호를 확인하세요." : "",
+    !studentId ? "학번을 입력하세요." : "",
+    studentId.length > 20 ? "학번은 20자 이하로 입력하세요." : "",
     fileOk(imageFile, MAX_IMAGE_MB, "작품 이미지"),
     fileOk(videoFile, VIDEO_LIMIT_MB, "영상")
   ].filter(Boolean);
@@ -123,10 +129,13 @@ $("#createForm").addEventListener("submit", async (e)=>{
     return;
   }
 
+  $("#submitBtn").classList.remove("done");
   $("#submitBtn").disabled = true;
+  $("#submitBtn").textContent = "AR 제작 중…";
+  $("#submitBtn").classList.add("working");
   $("#result").hidden = true;
-  setProgress(3);
-  setStatus("AR 작품 만들기를 준비하고 있습니다…");
+  setProgress(3, "준비 중");
+  setStatus("AR로 만들기를 준비하고 있습니다…");
 
   try{
     const school = await validateSchool(schoolCode);
@@ -134,40 +143,33 @@ $("#createForm").addEventListener("submit", async (e)=>{
 
     const {width,height} = await getImageSize(imageFile);
 
-    setProgress(8);
+    setProgress(8, "이미지 분석 준비");
     setStatus("작품 이미지에서 AR 인식정보를 자동 생성합니다. 잠시 기다려 주세요…");
     const mindBlob = await compileMindFromImage(imageFile);
 
     const projectId = crypto.randomUUID();
-    const studentKey = `${grade}-${classNo}-${String(studentNo).padStart(2,"0")}`;
-    const base = `${schoolCode}/${studentKey}/${projectId}`;
+    const base = `${schoolCode}/${studentId}/${projectId}`;
     const imageExt = (imageFile.name.split(".").pop() || "jpg").toLowerCase();
     const videoExt = (videoFile.name.split(".").pop() || "mp4").toLowerCase();
 
     setStatus("작품 이미지를 업로드하고 있습니다…");
-    setProgress(40);
+    setProgress(40, "이미지 업로드 중");
     let r = await supabase.storage.from("ar-assets").upload(`${base}/target.${imageExt}`, imageFile, {
-      cacheControl:"3600",
-      upsert:false,
-      contentType:imageFile.type || "image/jpeg"
+      cacheControl:"3600", upsert:false, contentType:imageFile.type || "image/jpeg"
     });
     if(r.error) throw r.error;
 
     setStatus(`영상을 업로드하고 있습니다… (${mb(videoFile.size)}MB)`);
-    setProgress(55);
+    setProgress(55, "영상 업로드 중");
     r = await supabase.storage.from("ar-assets").upload(`${base}/video.${videoExt}`, videoFile, {
-      cacheControl:"3600",
-      upsert:false,
-      contentType:videoFile.type || "video/mp4"
+      cacheControl:"3600", upsert:false, contentType:videoFile.type || "video/mp4"
     });
     if(r.error) throw r.error;
 
     setStatus("AR 인식정보를 저장하고 있습니다…");
-    setProgress(80);
+    setProgress(80, "AR 인식정보 저장 중");
     r = await supabase.storage.from("ar-assets").upload(`${base}/targets.mind`, mindBlob, {
-      cacheControl:"3600",
-      upsert:false,
-      contentType:"application/octet-stream"
+      cacheControl:"3600", upsert:false, contentType:"application/octet-stream"
     });
     if(r.error) throw r.error;
 
@@ -176,29 +178,33 @@ $("#createForm").addEventListener("submit", async (e)=>{
     const mindUrl = supabase.storage.from("ar-assets").getPublicUrl(`${base}/targets.mind`).data.publicUrl;
 
     setStatus("작품 정보를 저장하고 있습니다…");
-    setProgress(92);
+    setProgress(92, "작품 정보 저장 중");
 
     const {error:insertError} = await supabase.from("projects").insert({
       id: projectId,
       school_code: schoolCode,
-      grade,
-      class_no: classNo,
-      student_no: studentNo,
-      title: title || `${studentKey} AR 작품`,
+      student_id: studentId,
+      title: `${studentId} AR 작품`,
       image_url: imageUrl,
       video_url: videoUrl,
       mind_url: mindUrl,
       image_width: width,
-      image_height: height
+      image_height: height,
+      grade: 1,
+      class_no: 1,
+      student_no: 1
     });
     if(insertError) throw insertError;
 
-    setProgress(100);
+    setProgress(100, "완료");
+    $("#submitBtn").textContent = "AR 제작 완료";
+    $("#submitBtn").classList.remove("working");
+    $("#submitBtn").classList.add("done");
     const viewUrl = new URL("ar.html", location.href);
     viewUrl.searchParams.set("id", projectId);
     $("#resultLink").href = viewUrl.href;
     $("#resultLink").textContent = "내 AR 작품 열기";
-    $("#resultId").textContent = `${school.name} · ${grade}학년 ${classNo}반 ${studentNo}번`;
+    $("#resultId").textContent = `${school.name} · 학번 ${studentId}`;
     $("#result").hidden = false;
     setStatus("완료되었습니다. 아래 ‘내 AR 작품 열기’를 눌러 확인하세요.", "ok");
   }catch(err){
@@ -208,9 +214,13 @@ $("#createForm").addEventListener("submit", async (e)=>{
       msg += " 영상 파일 크기 또는 Supabase Storage 제한을 확인해 주세요.";
     }
     setStatus(msg, "error");
-    setProgress(0);
+    setProgress(0, "오류");
   }finally{
     $("#submitBtn").disabled = false;
+    if(!$("#submitBtn").classList.contains("done")){
+      $("#submitBtn").textContent = "AR로 만들기";
+      $("#submitBtn").classList.remove("working");
+    }
   }
 });
 
@@ -219,16 +229,21 @@ $("#findForm").addEventListener("submit", async (e)=>{
   const msg=$("#findStatus");
 
   if(!isConfigured){
-    msg.textContent="먼저 config.js에 Supabase 설정을 넣어 주세요.";
+    msg.textContent="Supabase 설정을 확인해 주세요.";
     msg.className="notice error";
     msg.hidden=false;
     return;
   }
 
   const schoolCode=sanitize($("#findSchoolCode").value).toUpperCase();
-  const grade=Number($("#findGrade").value);
-  const classNo=Number($("#findClassNo").value);
-  const studentNo=Number($("#findStudentNo").value);
+  const studentId=cleanStudentId($("#findStudentId").value);
+
+  if(!studentId){
+    msg.textContent="학번을 입력하세요.";
+    msg.className="notice error";
+    msg.hidden=false;
+    return;
+  }
 
   msg.textContent="작품을 찾고 있습니다…";
   msg.className="notice";
@@ -236,17 +251,15 @@ $("#findForm").addEventListener("submit", async (e)=>{
 
   try{
     const {data,error}=await supabase.from("projects")
-      .select("id,title,created_at")
+      .select("id,student_id,created_at")
       .eq("school_code",schoolCode)
-      .eq("grade",grade)
-      .eq("class_no",classNo)
-      .eq("student_no",studentNo)
+      .eq("student_id",studentId)
       .order("created_at",{ascending:false})
       .limit(1)
       .maybeSingle();
 
     if(error) throw error;
-    if(!data) throw new Error("해당 번호로 등록된 작품이 없습니다.");
+    if(!data) throw new Error("해당 학번으로 만든 작품이 없습니다.");
 
     const url=new URL("ar.html",location.href);
     url.searchParams.set("id",data.id);

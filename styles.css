@@ -45,11 +45,75 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .filebox{border:1px dashed #aab4ba;border-radius:12px;padding:12px;background:#fcfcfc}
 .filebox input{border:0;padding:8px 0;min-height:42px}
 .filemeta{font-size:13px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
-.progress{height:9px;background:#e9ecef;border-radius:99px;overflow:hidden;margin-top:10px}
-.progress>span{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.progress{height:14px;background:#dfe4e8;border-radius:99px;overflow:hidden;margin-top:6px;border:1px solid #cfd5da}
+.progress>span{display:block;height:100%;width:0;background:linear-gradient(90deg, #54b77c, #2f8f57);transition:width .25s ease}
 .result{padding:14px;border-radius:14px;background:#edf6f3;border:1px solid #cfe4dd;margin-top:14px}
 .result a{color:var(--accent);font-weight:800}
 .small{font-size:12px;color:var(--muted)}
 hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 code{background:#f1f3f4;padding:2px 5px;border-radius:5px}
 .toplinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+
+/* v7 — AR 제작 진행 상황을 더 명확하게 표시 */
+.progress-wrap{
+  margin-top:14px;
+  padding:12px 14px;
+  background:#f6f8f7;
+  border:1px solid #d8e0dc;
+  border-radius:14px;
+}
+.progress-label{
+  font-size:14px;
+  font-weight:800;
+  color:#315a52;
+  margin-bottom:8px;
+}
+.progress{
+  position:relative;
+  height:22px;
+  background:#dfe4e8;
+  border:1px solid #cbd3d7;
+  border-radius:999px;
+  overflow:hidden;
+  margin:0;
+}
+.progress>span{
+  position:absolute;
+  inset:0 auto 0 0;
+  display:block;
+  height:100%;
+  width:0;
+  background:linear-gradient(90deg,#6fc38e,#2f8f57);
+  transition:width .3s ease;
+}
+.progress>strong{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  z-index:2;
+  font-size:12px;
+  font-weight:900;
+  color:#24322d;
+  text-shadow:0 1px 0 rgba(255,255,255,.75);
+  pointer-events:none;
+}
+.primary.working::before{
+  content:"";
+  width:16px;
+  height:16px;
+  margin-right:8px;
+  border:2px solid rgba(255,255,255,.45);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:artlive-spin .8s linear infinite;
+}
+.primary.done{
+  background:#2f8f57;
+}
+@keyframes artlive-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  .progress>span{transition:none}
+  .primary.working::before{animation:none}
+}
