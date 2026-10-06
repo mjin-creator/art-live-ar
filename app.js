@@ -67,19 +67,53 @@ async function getImageSize(file){
   return size;
 }
 
-async function compileMindFromImage(file){
-  if(!window.MINDAR?.IMAGE?.Compiler){
-    throw new Error("AR 자동 분석 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요.");
+async function ensureMindARCompiler(){
+  const findCompiler = () =>
+    window.MINDAR?.IMAGE?.Compiler ||
+    window.MINDAR?.Compiler ||
+    null;
+
+  let CompilerClass = findCompiler();
+  if(CompilerClass) return CompilerClass;
+
+  // CDN 로딩이 늦었거나 실패한 경우 공식 MindAR 배포본을 한 번 더 불러옵니다.
+  await new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-artlive-mindar-fallback]');
+    if(existing){
+      existing.addEventListener("load", resolve, {once:true});
+      existing.addEventListener("error", reject, {once:true});
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image.prod.js";
+    script.async = true;
+    script.dataset.artliveMindarFallback = "1";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("MindAR 라이브러리를 불러오지 못했습니다."));
+    document.head.appendChild(script);
+  });
+
+  CompilerClass = findCompiler();
+  if(!CompilerClass){
+    throw new Error("AR 자동 분석 모듈을 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.");
   }
+  return CompilerClass;
+}
+
+async function compileMindFromImage(file){
+  const CompilerClass = await ensureMindARCompiler();
 
   const {img, url} = await loadImage(file);
   try{
-    const compiler = new window.MINDAR.IMAGE.Compiler();
+    const compiler = new CompilerClass();
     await compiler.compileImageTargets([img], (progress) => {
-      const mapped = 10 + (Number(progress) / 100) * 25;
+      const numericProgress = Number(progress) || 0;
+      const mapped = 10 + (numericProgress / 100) * 25;
       setProgress(mapped, "AR 인식 분석 중");
-      setStatus(`작품을 AR용으로 자동 분석하고 있습니다… ${Math.round(progress)}%`);
+      setStatus(`작품 이미지에서 AR 인식정보를 자동 생성하고 있습니다… ${Math.round(numericProgress)}%`);
     });
+
     const exportedBuffer = await compiler.exportData();
     return new Blob([exportedBuffer], {type:"application/octet-stream"});
   } finally {
