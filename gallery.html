@@ -61,7 +61,7 @@
   <section id="preparePanel">
     <h1>작품 감상 준비</h1>
     <p>
-      이 학급의 작품을 한 번에 인식할 수 있도록 준비합니다.
+      등록된 작품들을 한 번에 인식할 수 있도록 준비합니다.
       준비가 끝나면 카메라로 <strong>액자와 문장이 포함된 작품 전체</strong>를 비춰 주세요.
     </p>
 
@@ -82,11 +82,8 @@
 import { supabase, isConfigured } from "./supabase-client.js";
 
 const SCHOOL_CODE = "GARAK26";
-const GROUP_SIZE = 25;
 
 const params = new URL(location.href).searchParams;
-const classCode = params.get("class") || "";
-const part = Math.max(0, Number(params.get("part") || "0"));
 
 const $ = (s) => document.querySelector(s);
 const preparePanel = $("#preparePanel");
@@ -111,23 +108,6 @@ function cleanStudentId(v){
   return String(v ?? "").trim().replace(/\s+/g, "").replace(/[^0-9A-Za-z가-힣_-]/g, "");
 }
 
-function classCodeFromStudentId(studentId){
-  const value = cleanStudentId(studentId);
-  if(value.length <= 2) return "기타";
-  return value.slice(0, -2);
-}
-
-function formatClassCode(code){
-  if(code === "기타") return "기타 작품";
-  if(/^\d+$/.test(code) && code.length >= 2){
-    const grade = Number(code.slice(0,1));
-    const classNo = Number(code.slice(1));
-    if(Number.isFinite(grade) && Number.isFinite(classNo)){
-      return `${grade}학년 ${classNo}반`;
-    }
-  }
-  return `${code} 학급`;
-}
 
 function setPrepareProgress(value, label){
   const p = Math.max(0, Math.min(100, Number(value) || 0));
@@ -174,7 +154,6 @@ function getCompilerClass(){
 
 async function loadProjects(){
   if(!isConfigured) throw new Error("Supabase 설정을 확인해 주세요.");
-  if(!classCode) throw new Error("학급 정보가 없습니다.");
 
   setPrepareProgress(3, "등록된 작품을 확인하고 있습니다…");
 
@@ -196,26 +175,17 @@ async function loadProjects(){
     latest.push({...row, student_id:sid});
   }
 
-  const classRows = latest
-    .filter(row => classCodeFromStudentId(row.student_id) === classCode)
-    .sort((a,b) => a.student_id.localeCompare(b.student_id, "ko", {numeric:true}));
+  projects = latest.sort((a,b) => a.student_id.localeCompare(b.student_id, "ko", {numeric:true}));
 
-  const start = part * GROUP_SIZE;
-  projects = classRows.slice(start, start + GROUP_SIZE);
+  if(projects.length === 0) throw new Error("감상할 작품을 찾지 못했습니다.");
 
-  if(projects.length === 0) throw new Error("이 학급에서 감상할 작품을 찾지 못했습니다.");
-
-  const partText = classRows.length > GROUP_SIZE
-    ? ` · ${part + 1}/${Math.ceil(classRows.length / GROUP_SIZE)}`
-    : "";
-
-  sub.textContent = `${formatClassCode(classCode)}${partText} · ${projects.length}작품`;
+  sub.textContent = `전체 전시 · ${projects.length}작품`;
 }
 
 async function prepareMindBundle(){
   const signatureText = projects.map(p => `${p.id}:${p.student_id}`).join("|");
   const signature = (await sha256(signatureText)).slice(0,20);
-  const bundlePath = `gallery-bundles/${SCHOOL_CODE}/${classCode}/part-${part}-${signature}.mind`;
+  const bundlePath = `gallery-bundles/${SCHOOL_CODE}/all-exhibition-${signature}.mind`;
 
   setPrepareProgress(8, "학급 AR 인식파일을 확인하고 있습니다…");
 
@@ -223,7 +193,7 @@ async function prepareMindBundle(){
   const existing = await supabase.storage.from("ar-assets").download(bundlePath);
   if(!existing.error && existing.data){
     mindObjectUrl = URL.createObjectURL(existing.data);
-    setPrepareProgress(82, "저장된 학급 AR 인식정보를 불러왔습니다.");
+    setPrepareProgress(82, "저장된 전시 AR 인식정보를 불러왔습니다.");
     return;
   }
 
@@ -232,7 +202,7 @@ async function prepareMindBundle(){
     throw new Error("AR 분석 기능을 불러오지 못했습니다. 페이지를 새로고침해 주세요.");
   }
 
-  setPrepareProgress(12, `처음 감상하는 학급입니다. ${projects.length}개 작품을 분석합니다…`);
+  setPrepareProgress(12, `처음 감상하는 전시입니다. ${projects.length}개 작품을 분석합니다…`);
 
   const loaded = [];
   try{
@@ -248,7 +218,7 @@ async function prepareMindBundle(){
       loaded.map(x => x.img),
       (progress) => {
         const p = 30 + (Number(progress) || 0) * 0.45;
-        setPrepareProgress(p, `학급 작품 인식정보 만드는 중 · ${Math.round(Number(progress) || 0)}%`);
+        setPrepareProgress(p, `전시 작품 인식정보 만드는 중 · ${Math.round(Number(progress) || 0)}%`);
       }
     );
 
@@ -256,7 +226,7 @@ async function prepareMindBundle(){
     const blob = new Blob([buffer], {type:"application/octet-stream"});
     mindObjectUrl = URL.createObjectURL(blob);
 
-    setPrepareProgress(78, "학급 AR 인식정보를 저장하고 있습니다…");
+    setPrepareProgress(78, "전시 AR 인식정보를 저장하고 있습니다…");
 
     const upload = await supabase.storage.from("ar-assets").upload(bundlePath, blob, {
       cacheControl:"3600",
