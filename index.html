@@ -82,27 +82,31 @@
           <div id="result" class="result" hidden>
             <strong id="resultId"></strong><br>
             <a id="resultLink" href="#">내 AR 작품 열기</a>
-            <div class="help">다른 기기에서도 같은 학번으로 ‘작품 감상하기’에서 찾을 수 있습니다.</div>
+            <div class="help">전시 감상에서는 학급을 선택한 뒤 작품만 비추면 해당 영상이 자동 재생됩니다.</div>
           </div>
         </div>
       </form>
     </section>
 
     <section id="panel-view" class="panel" hidden>
-      <form id="findForm" class="card">
+      <div class="card">
         <h2>작품 감상하기</h2>
-        <input id="findSchoolCode" type="hidden" value="GARAK26">
-        <p class="help">학번을 입력하면 가장 최근에 만든 AR 작품이 열립니다.</p>
-        <div>
-          <label for="findStudentId">학번</label>
-          <input id="findStudentId" type="text" inputmode="numeric" autocomplete="off"
-                 maxlength="20" placeholder="예: 10101">
+        <input id="viewSchoolCode" type="hidden" value="GARAK26">
+
+        <p class="help">
+          학급을 한 번 선택한 뒤 카메라로 <strong>액자와 문장이 포함된 작품 전체</strong>를 비추세요.
+          작품을 인식하면 해당 영상이 자동으로 재생됩니다.
+        </p>
+
+        <div id="galleryStatus" class="notice">등록된 작품을 불러오는 중입니다…</div>
+
+        <div id="classButtons" class="actions" hidden></div>
+
+        <div class="notice warn">
+          작품을 처음 인식할 때는 액자와 문장이 함께 보이도록 작품 전체를 비춰 주세요.
+          인식된 뒤에는 조금 가까이 이동해도 됩니다.
         </div>
-        <div class="actions">
-          <button class="primary" type="submit">AR 작품 열기</button>
-        </div>
-        <div id="findStatus" class="notice" hidden></div>
-      </form>
+      </div>
     </section>
   </main>
   <script type="module" src="./app.js"></script>

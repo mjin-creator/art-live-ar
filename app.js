@@ -261,48 +261,123 @@ $("#createForm").addEventListener("submit", async (e)=>{
   }
 });
 
-$("#findForm").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  const msg=$("#findStatus");
+
+// ===== 전시 감상: 학급별 자동 작품 인식 =====
+const GALLERY_GROUP_SIZE = 25;
+let galleryClassesLoaded = false;
+
+function classCodeFromStudentId(studentId){
+  const value = cleanStudentId(studentId);
+  if(value.length <= 2) return "기타";
+  return value.slice(0, -2);
+}
+
+function formatClassCode(code){
+  if(code === "기타") return "기타 작품";
+  if(/^\d+$/.test(code) && code.length >= 2){
+    const grade = Number(code.slice(0, 1));
+    const classNo = Number(code.slice(1));
+    if(Number.isFinite(grade) && Number.isFinite(classNo)){
+      return `${grade}학년 ${classNo}반`;
+    }
+  }
+  return `${code} 학급`;
+}
+
+async function loadGalleryClasses(){
+  if(galleryClassesLoaded) return;
+
+  const status = $("#galleryStatus");
+  const box = $("#classButtons");
 
   if(!isConfigured){
-    msg.textContent="Supabase 설정을 확인해 주세요.";
-    msg.className="notice error";
-    msg.hidden=false;
+    status.textContent = "Supabase 설정을 확인해 주세요.";
+    status.className = "notice error";
     return;
   }
 
-  const schoolCode=sanitize($("#findSchoolCode").value).toUpperCase();
-  const studentId=cleanStudentId($("#findStudentId").value);
-
-  if(!studentId){
-    msg.textContent="학번을 입력하세요.";
-    msg.className="notice error";
-    msg.hidden=false;
-    return;
-  }
-
-  msg.textContent="작품을 찾고 있습니다…";
-  msg.className="notice";
-  msg.hidden=false;
+  status.textContent = "등록된 작품을 불러오는 중입니다…";
+  status.className = "notice";
+  box.hidden = true;
+  box.innerHTML = "";
 
   try{
-    const {data,error}=await supabase.from("projects")
+    const schoolCode = sanitize($("#viewSchoolCode").value).toUpperCase();
+
+    const {data, error} = await supabase.from("projects")
       .select("id,student_id,created_at")
-      .eq("school_code",schoolCode)
-      .eq("student_id",studentId)
-      .order("created_at",{ascending:false})
-      .limit(1)
-      .maybeSingle();
+      .eq("school_code", schoolCode)
+      .not("student_id", "is", null)
+      .order("created_at", {ascending:false})
+      .limit(1000);
 
     if(error) throw error;
-    if(!data) throw new Error("해당 학번으로 만든 작품이 없습니다.");
 
-    const url=new URL("ar.html",location.href);
-    url.searchParams.set("id",data.id);
-    location.href=url.href;
+    // 같은 학생이 여러 번 만든 경우 가장 최근 작품 하나만 사용합니다.
+    const latestByStudent = [];
+    const seen = new Set();
+    for(const row of (data || [])){
+      const sid = cleanStudentId(row.student_id);
+      if(!sid || seen.has(sid)) continue;
+      seen.add(sid);
+      latestByStudent.push({...row, student_id:sid});
+    }
+
+    if(latestByStudent.length === 0){
+      status.textContent = "아직 감상할 작품이 없습니다.";
+      status.className = "notice";
+      return;
+    }
+
+    const groups = new Map();
+    for(const row of latestByStudent){
+      const classCode = classCodeFromStudentId(row.student_id);
+      if(!groups.has(classCode)) groups.set(classCode, []);
+      groups.get(classCode).push(row);
+    }
+
+    const sortedCodes = [...groups.keys()].sort((a,b) =>
+      String(a).localeCompare(String(b), "ko", {numeric:true})
+    );
+
+    for(const classCode of sortedCodes){
+      const rows = groups.get(classCode);
+      const chunkCount = Math.ceil(rows.length / GALLERY_GROUP_SIZE);
+
+      for(let part=0; part<chunkCount; part++){
+        const count = Math.min(GALLERY_GROUP_SIZE, rows.length - part * GALLERY_GROUP_SIZE);
+        const link = document.createElement("a");
+        link.className = "btn soft";
+        link.href = `gallery.html?class=${encodeURIComponent(classCode)}&part=${part}`;
+
+        const suffix = chunkCount > 1 ? ` · ${part + 1}/${chunkCount}` : "";
+        link.textContent = `${formatClassCode(classCode)}${suffix} · ${count}작품`;
+        box.appendChild(link);
+      }
+    }
+
+    status.textContent = "학급을 선택하면 카메라 감상 화면이 열립니다.";
+    status.className = "notice ok";
+    box.hidden = false;
+    galleryClassesLoaded = true;
   }catch(err){
-    msg.textContent=err?.message || "작품을 찾지 못했습니다.";
-    msg.className="notice error";
+    console.error(err);
+    status.textContent = err?.message || "작품 목록을 불러오지 못했습니다.";
+    status.className = "notice error";
   }
+}
+
+// 감상 탭을 누르는 순간 학급 목록을 자동으로 불러옵니다.
+tabs.forEach(b => {
+  b.addEventListener("click", () => {
+    if(b.dataset.tab === "view") loadGalleryClasses();
+  });
 });
+
+// 새 작품을 만들면 감상 목록을 다음에 다시 갱신합니다.
+const createFormForGalleryRefresh = $("#createForm");
+if(createFormForGalleryRefresh){
+  createFormForGalleryRefresh.addEventListener("submit", () => {
+    galleryClassesLoaded = false;
+  });
+}

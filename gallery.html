@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>ART LIVE · 작품 감상</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image.prod.js"></script>
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif}
+    #app{position:fixed;inset:0}
+    #sceneHost{position:absolute;inset:0}
+    #sceneHost a-scene{width:100%!important;height:100%!important}
+    #topbar{position:absolute;z-index:30;left:0;right:0;top:0;padding:14px;
+      display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+      color:#fff;background:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,0))}
+    #title{font-weight:900;font-size:17px}
+    #sub{font-size:12px;opacity:.88;margin-top:3px}
+    #soundBtn,#backBtn{border:0;border-radius:11px;min-height:42px;padding:10px 12px;
+      font-weight:800;background:rgba(255,255,255,.92);color:#222;text-decoration:none}
+    #preparePanel{position:absolute;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:min(90vw,480px);background:#fff;color:#222;border-radius:18px;padding:20px}
+    #preparePanel h1{font-size:22px;margin:0 0 8px}
+    #preparePanel p{font-size:14px;line-height:1.55;color:#62676c}
+    #prepareStatus{font-size:14px;font-weight:800;color:#315a52;margin:14px 0 7px}
+    .progress{position:relative;height:20px;background:#dfe4e8;border:1px solid #cbd3d7;
+      border-radius:999px;overflow:hidden}
+    .progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#6fc38e,#2f8f57);
+      transition:width .25s ease}
+    .progress strong{position:absolute;inset:0;display:grid;place-items:center;font-size:12px}
+    #startBtn{width:100%;margin-top:14px;border:0;border-radius:12px;min-height:48px;
+      background:#315a52;color:white;font-weight:900;font-size:16px}
+    #startBtn:disabled{opacity:.45}
+    #hint{position:absolute;z-index:25;left:50%;bottom:28px;transform:translateX(-50%);
+      max-width:90vw;background:rgba(0,0,0,.68);color:#fff;padding:9px 14px;
+      border-radius:999px;font-size:13px;text-align:center;white-space:nowrap}
+    #error{display:none;margin-top:12px;background:#fff0f0;color:#8d2525;border:1px solid #f0caca;
+      border-radius:12px;padding:12px;font-size:14px;line-height:1.5}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="sceneHost"></div>
+
+  <div id="topbar">
+    <div>
+      <div id="title">ART LIVE · 작품 감상</div>
+      <div id="sub">전시 준비 중</div>
+    </div>
+    <div style="display:flex;gap:7px">
+      <button id="soundBtn" type="button">소리 켜기</button>
+      <a id="backBtn" href="./index.html">처음으로</a>
+    </div>
+  </div>
+
+  <section id="preparePanel">
+    <h1>작품 감상 준비</h1>
+    <p>
+      이 학급의 작품을 한 번에 인식할 수 있도록 준비합니다.
+      준비가 끝나면 카메라로 <strong>액자와 문장이 포함된 작품 전체</strong>를 비춰 주세요.
+    </p>
+
+    <div id="prepareStatus">작품 목록을 불러오는 중…</div>
+    <div class="progress">
+      <span id="prepareBar"></span>
+      <strong id="preparePercent">0%</strong>
+    </div>
+
+    <button id="startBtn" type="button" disabled>AR 감상 시작</button>
+    <div id="error"></div>
+  </section>
+
+  <div id="hint">AR 감상을 준비하고 있습니다…</div>
+</div>
+
+<script type="module">
+import { supabase, isConfigured } from "./supabase-client.js";
+
+const SCHOOL_CODE = "GARAK26";
+const GROUP_SIZE = 25;
+
+const params = new URL(location.href).searchParams;
+const classCode = params.get("class") || "";
+const part = Math.max(0, Number(params.get("part") || "0"));
+
+const $ = (s) => document.querySelector(s);
+const preparePanel = $("#preparePanel");
+const prepareStatus = $("#prepareStatus");
+const prepareBar = $("#prepareBar");
+const preparePercent = $("#preparePercent");
+const startBtn = $("#startBtn");
+const hint = $("#hint");
+const errorBox = $("#error");
+const sub = $("#sub");
+const soundBtn = $("#soundBtn");
+
+let projects = [];
+let mindObjectUrl = "";
+let sceneEl = null;
+let arVideo = null;
+let activeIndex = -1;
+let soundEnabled = false;
+let cameraStarted = false;
+
+function cleanStudentId(v){
+  return String(v ?? "").trim().replace(/\s+/g, "").replace(/[^0-9A-Za-z가-힣_-]/g, "");
+}
+
+function classCodeFromStudentId(studentId){
+  const value = cleanStudentId(studentId);
+  if(value.length <= 2) return "기타";
+  return value.slice(0, -2);
+}
+
+function formatClassCode(code){
+  if(code === "기타") return "기타 작품";
+  if(/^\d+$/.test(code) && code.length >= 2){
+    const grade = Number(code.slice(0,1));
+    const classNo = Number(code.slice(1));
+    if(Number.isFinite(grade) && Number.isFinite(classNo)){
+      return `${grade}학년 ${classNo}반`;
+    }
+  }
+  return `${code} 학급`;
+}
+
+function setPrepareProgress(value, label){
+  const p = Math.max(0, Math.min(100, Number(value) || 0));
+  prepareBar.style.width = `${p}%`;
+  preparePercent.textContent = `${Math.round(p)}%`;
+  if(label) prepareStatus.textContent = label;
+}
+
+function fail(message){
+  console.error(message);
+  errorBox.textContent = message;
+  errorBox.style.display = "block";
+  prepareStatus.textContent = "감상 준비 중 오류가 발생했습니다.";
+  hint.textContent = "오류 내용을 확인해 주세요.";
+  startBtn.disabled = true;
+}
+
+async function sha256(text){
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
+async function loadRemoteImage(url){
+  const response = await fetch(url, {cache:"force-cache"});
+  if(!response.ok) throw new Error("AR 기준 이미지를 불러오지 못했습니다.");
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({img, objectUrl});
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("AR 기준 이미지를 읽지 못했습니다."));
+    };
+    img.src = objectUrl;
+  });
+}
+
+function getCompilerClass(){
+  return window.MINDAR?.IMAGE?.Compiler || window.MINDAR?.Compiler || null;
+}
+
+async function loadProjects(){
+  if(!isConfigured) throw new Error("Supabase 설정을 확인해 주세요.");
+  if(!classCode) throw new Error("학급 정보가 없습니다.");
+
+  setPrepareProgress(3, "등록된 작품을 확인하고 있습니다…");
+
+  const {data, error} = await supabase.from("projects")
+    .select("id,student_id,image_url,video_url,image_width,image_height,created_at")
+    .eq("school_code", SCHOOL_CODE)
+    .not("student_id", "is", null)
+    .order("created_at", {ascending:false})
+    .limit(1000);
+
+  if(error) throw error;
+
+  const seen = new Set();
+  const latest = [];
+  for(const row of (data || [])){
+    const sid = cleanStudentId(row.student_id);
+    if(!sid || seen.has(sid)) continue;
+    seen.add(sid);
+    latest.push({...row, student_id:sid});
+  }
+
+  const classRows = latest
+    .filter(row => classCodeFromStudentId(row.student_id) === classCode)
+    .sort((a,b) => a.student_id.localeCompare(b.student_id, "ko", {numeric:true}));
+
+  const start = part * GROUP_SIZE;
+  projects = classRows.slice(start, start + GROUP_SIZE);
+
+  if(projects.length === 0) throw new Error("이 학급에서 감상할 작품을 찾지 못했습니다.");
+
+  const partText = classRows.length > GROUP_SIZE
+    ? ` · ${part + 1}/${Math.ceil(classRows.length / GROUP_SIZE)}`
+    : "";
+
+  sub.textContent = `${formatClassCode(classCode)}${partText} · ${projects.length}작품`;
+}
+
+async function prepareMindBundle(){
+  const signatureText = projects.map(p => `${p.id}:${p.student_id}`).join("|");
+  const signature = (await sha256(signatureText)).slice(0,20);
+  const bundlePath = `gallery-bundles/${SCHOOL_CODE}/${classCode}/part-${part}-${signature}.mind`;
+
+  setPrepareProgress(8, "학급 AR 인식파일을 확인하고 있습니다…");
+
+  // 이미 누군가 같은 작품 구성으로 만들어 둔 학급 인식파일이 있으면 바로 재사용합니다.
+  const existing = await supabase.storage.from("ar-assets").download(bundlePath);
+  if(!existing.error && existing.data){
+    mindObjectUrl = URL.createObjectURL(existing.data);
+    setPrepareProgress(82, "저장된 학급 AR 인식정보를 불러왔습니다.");
+    return;
+  }
+
+  const CompilerClass = getCompilerClass();
+  if(!CompilerClass){
+    throw new Error("AR 분석 기능을 불러오지 못했습니다. 페이지를 새로고침해 주세요.");
+  }
+
+  setPrepareProgress(12, `처음 감상하는 학급입니다. ${projects.length}개 작품을 분석합니다…`);
+
+  const loaded = [];
+  try{
+    for(let i=0; i<projects.length; i++){
+      const item = await loadRemoteImage(projects[i].image_url);
+      loaded.push(item);
+      const p = 12 + ((i + 1) / projects.length) * 18;
+      setPrepareProgress(p, `AR 기준 이미지 불러오는 중 · ${i + 1}/${projects.length}`);
+    }
+
+    const compiler = new CompilerClass();
+    await compiler.compileImageTargets(
+      loaded.map(x => x.img),
+      (progress) => {
+        const p = 30 + (Number(progress) || 0) * 0.45;
+        setPrepareProgress(p, `학급 작품 인식정보 만드는 중 · ${Math.round(Number(progress) || 0)}%`);
+      }
+    );
+
+    const buffer = await compiler.exportData();
+    const blob = new Blob([buffer], {type:"application/octet-stream"});
+    mindObjectUrl = URL.createObjectURL(blob);
+
+    setPrepareProgress(78, "학급 AR 인식정보를 저장하고 있습니다…");
+
+    const upload = await supabase.storage.from("ar-assets").upload(bundlePath, blob, {
+      cacheControl:"3600",
+      upsert:false,
+      contentType:"application/octet-stream"
+    });
+
+    // 동시에 다른 기기에서 먼저 만들었을 수 있으므로 이미 존재 오류는 무시해도 됩니다.
+    if(upload.error && !/exist|duplicate|already/i.test(upload.error.message || "")){
+      console.warn("Bundle cache upload failed:", upload.error);
+    }
+  } finally {
+    loaded.forEach(x => URL.revokeObjectURL(x.objectUrl));
+  }
+}
+
+function createScene(){
+  setPrepareProgress(86, "AR 카메라 화면을 준비하고 있습니다…");
+
+  const host = $("#sceneHost");
+
+  const targetEntities = projects.map((p, index) => {
+    const ratio = (p.image_width && p.image_height)
+      ? Number(p.image_height) / Number(p.image_width)
+      : 0.75;
+
+    return `
+      <a-entity class="target-anchor" data-index="${index}" mindar-image-target="targetIndex: ${index}">
+        <a-video class="target-plane"
+          src="#arVideo"
+          position="0 0 0.01"
+          width="1"
+          height="${ratio}"
+          rotation="0 0 0"
+          visible="false">
+        </a-video>
+      </a-entity>`;
+  }).join("");
+
+  host.innerHTML = `
+    <a-scene
+      mindar-image="imageTargetSrc: ${mindObjectUrl}; autoStart: false; uiLoading: no; uiError: no; uiScanning: no"
+      embedded
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+
+      <a-assets>
+        <video id="arVideo"
+          preload="none"
+          muted
+          playsinline
+          webkit-playsinline
+          crossorigin="anonymous">
+        </video>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+      ${targetEntities}
+    </a-scene>`;
+
+  sceneEl = host.querySelector("a-scene");
+  arVideo = host.querySelector("#arVideo");
+
+  const anchors = [...host.querySelectorAll(".target-anchor")];
+
+  anchors.forEach((anchor, index) => {
+    const plane = anchor.querySelector(".target-plane");
+
+    anchor.addEventListener("targetFound", async () => {
+      activeIndex = index;
+      anchors.forEach(a => {
+        const p = a.querySelector(".target-plane");
+        p?.setAttribute("visible", "false");
+      });
+
+      plane?.setAttribute("visible", "true");
+      const project = projects[index];
+
+      if(arVideo.src !== project.video_url){
+        arVideo.pause();
+        arVideo.src = project.video_url;
+        arVideo.load();
+      }
+
+      arVideo.muted = !soundEnabled;
+      try{
+        arVideo.currentTime = 0;
+      }catch(_){}
+
+      arVideo.play().catch(() => {});
+      hint.textContent = `인식 완료 · 학번 ${project.student_id}`;
+    });
+
+    anchor.addEventListener("targetLost", () => {
+      if(activeIndex === index){
+        arVideo.pause();
+        plane?.setAttribute("visible", "false");
+        hint.textContent = "다음 작품의 액자와 문장이 함께 보이도록 비춰주세요";
+        activeIndex = -1;
+      }
+    });
+  });
+
+  setPrepareProgress(96, "카메라 시작 준비가 완료되었습니다.");
+}
+
+async function waitForScene(){
+  if(sceneEl.hasLoaded) return;
+  await new Promise(resolve => sceneEl.addEventListener("loaded", resolve, {once:true}));
+}
+
+async function prepareGallery(){
+  try{
+    await loadProjects();
+    await prepareMindBundle();
+    createScene();
+    await waitForScene();
+
+    setPrepareProgress(100, "준비 완료 · AR 감상을 시작하세요.");
+    startBtn.disabled = false;
+    hint.textContent = "AR 감상 시작을 눌러주세요";
+  }catch(err){
+    fail(err?.message || "AR 감상 준비에 실패했습니다.");
+  }
+}
+
+startBtn.addEventListener("click", async () => {
+  if(cameraStarted || !sceneEl) return;
+
+  try{
+    cameraStarted = true;
+    startBtn.disabled = true;
+    startBtn.textContent = "카메라 시작 중…";
+
+    const system = sceneEl.systems["mindar-image-system"];
+    await system.start();
+
+    preparePanel.style.display = "none";
+    hint.textContent = "액자와 문장이 포함된 작품 전체를 비춰주세요";
+
+    // 모바일 브라우저의 미디어 재생 권한을 사용자 클릭에서 미리 활성화합니다.
+    try{
+      await arVideo.play();
+      arVideo.pause();
+    }catch(_){}
+  }catch(err){
+    cameraStarted = false;
+    startBtn.disabled = false;
+    startBtn.textContent = "AR 감상 시작";
+    fail("카메라를 시작하지 못했습니다. Chrome에서 카메라 권한을 허용해 주세요.");
+  }
+});
+
+soundBtn.addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  soundBtn.textContent = soundEnabled ? "소리 끄기" : "소리 켜기";
+
+  if(arVideo){
+    arVideo.muted = !soundEnabled;
+    if(soundEnabled && activeIndex >= 0){
+      arVideo.play().catch(() => {});
+    }
+  }
+});
+
+await prepareGallery();
+</script>
+</body>
+</html>
